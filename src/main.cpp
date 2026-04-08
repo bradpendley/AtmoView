@@ -6,7 +6,7 @@
 
 // ── I2C pins for ESP32 CYD ──────────────────────────────────────────────────
 // The CYD exposes a JST connector on the back with 3.3V, GND, IO22, IO27
-// We use those for I2C: SDA = 22, SCL = 27
+// Use those for I2C: SDA = 22, SCL = 27
 #define I2C_SDA 22
 #define I2C_SCL 27
 
@@ -120,17 +120,16 @@ void setup() {
   pinMode(21, OUTPUT);
   digitalWrite(21, HIGH);
 
-  // I2C init on CYD pins
   Wire.begin(I2C_SDA, I2C_SCL);
 
-  // BME280 init
+
   if (!bme.begin(BME280_ADDRESS, &Wire)) {
     Serial.println("BME280 not found! Check address (0x76 / 0x77) and wiring.");
     showError("Not found at 0x76");
     bmeOk = false;
   } else {
     Serial.println("BME280 found.");
-    // Weather-station sampling: 1x oversampling, normal mode
+
     bme.setSampling(
       Adafruit_BME280::MODE_NORMAL,
       Adafruit_BME280::SAMPLING_X1,   // temperature
@@ -156,11 +155,9 @@ void loop() {
   float pres = bme.readPressure() / 100.0f;      // hPa
   float alt  = bme.readAltitude(1013.25f);       // m (sea-level ref)
 
-  // Serial output
   Serial.printf("Temp: %.2f °C | Hum: %.2f %% | Pres: %.2f hPa | Alt: %.1f m\n",
                 temp, hum, pres, alt);
 
-  // Screen update (partial redraws only)
   uint16_t bgEven = 0x1082;   // dark row bg
   uint16_t bgOdd  = COLOR_BG;
 
