@@ -90,8 +90,14 @@ void drawValue(float val, float &prev, uint16_t color, uint16_t bgColor,
   tft.drawString(buf, 264, y + 22);
 
   // Unit (small)
-  tft.setTextFont(2);
-  tft.drawString(unit, 312, y + 22);
+  tft.setFreeFont(NULL);
+  if (strcmp(unit, "F") == 0) {
+    // Draw degree symbol manually for Fahrenheit
+    tft.drawCircle(300, y + 14, 2, color);  // Outline circle for degree symbol
+    tft.drawString("F", 312, y + 18);
+  } else {
+    tft.drawString(unit, 312, y + 18);
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -155,13 +161,13 @@ void loop() {
   float pres = bme.readPressure() / 100.0f;      // hPa
   float alt  = bme.readAltitude(1013.25f);       // m (sea-level ref)
 
-  Serial.printf("Temp: %.2f °C | Hum: %.2f %% | Pres: %.2f hPa | Alt: %.1f m\n",
+  Serial.printf("Temp: %.2f °F | Hum: %.2f %% | Pres: %.2f hPa | Alt: %.1f m\n",
                 temp, hum, pres, alt);
 
   uint16_t bgEven = 0x1082;   // dark row bg
   uint16_t bgOdd  = COLOR_BG;
 
-  drawValue(temp, prevTemp, COLOR_TEMP, bgEven, 50,  "%.1f", "C");
+  drawValue(temp, prevTemp, COLOR_TEMP, bgEven, 50,  "%.1f", "F");
   drawValue(hum,  prevHum,  COLOR_HUM,  bgOdd,  100, "%.1f", "%");
   drawValue(pres, prevPres, COLOR_PRES, bgEven, 150, "%.1f", "hPa");
   drawValue(alt,  prevAlt,  COLOR_ALT,  bgOdd,  200, "%.0f", "m");
