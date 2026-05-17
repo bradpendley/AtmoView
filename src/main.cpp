@@ -3,6 +3,7 @@
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BME280.h>
 #include <TFT_eSPI.h>
+#include <time.h>
 
 // ── I2C pins for ESP32 CYD ──────────────────────────────────────────────────
 // The CYD exposes a JST connector on the back with 3.3V, GND, IO22, IO27
@@ -18,14 +19,41 @@ Adafruit_BME280 bme;
 TFT_eSPI tft = TFT_eSPI();
 
 // ── Layout constants ─────────────────────────────────────────────────────────
-const uint16_t COLOR_BG     = TFT_BLACK;
-const uint16_t COLOR_TITLE  = TFT_CYAN;
-const uint16_t COLOR_LABEL  = TFT_DARKGREY;
-const uint16_t COLOR_TEMP   = TFT_YELLOW;
-const uint16_t COLOR_HUM    = 0x07FF;   // aqua
-const uint16_t COLOR_PRES   = 0xFD20;   // orange
-const uint16_t COLOR_ALT    = TFT_GREEN;
-const uint16_t COLOR_ERROR  = TFT_RED;
+// Color theme selection: Set USE_BW_THEME to true for black & white theme
+const bool USE_BW_THEME = true;
+
+// Color palette - Dark Neon Theme
+const uint16_t COLOR_BG_DARK        = 0x0000;   // Deep black
+const uint16_t COLOR_QUAD_BG_DARK   = 0x1082;   // Dark charcoal
+const uint16_t COLOR_ACCENT_1_DARK  = 0x07FF;   // Cyan
+const uint16_t COLOR_ACCENT_2_DARK  = 0x07E0;   // Mint green
+const uint16_t COLOR_ACCENT_3_DARK  = 0xFD20;   // Soft orange
+const uint16_t COLOR_ACCENT_4_DARK  = 0x00FF;   // Light cyan
+const uint16_t COLOR_LABEL_DARK     = 0x8410;   // Subtle gray
+const uint16_t COLOR_ERROR_DARK     = TFT_RED;
+const uint16_t COLOR_BORDER_DARK    = 0x2945;   // Subtle border color
+
+// Color palette - Black & White Theme
+const uint16_t COLOR_BG_BW          = TFT_BLACK;
+const uint16_t COLOR_QUAD_BG_BW     = TFT_BLACK;
+const uint16_t COLOR_ACCENT_1_BW    = TFT_WHITE;
+const uint16_t COLOR_ACCENT_2_BW    = TFT_WHITE;
+const uint16_t COLOR_ACCENT_3_BW    = TFT_WHITE;
+const uint16_t COLOR_ACCENT_4_BW    = TFT_WHITE;
+const uint16_t COLOR_LABEL_BW       = 0x8410;   // Light gray
+const uint16_t COLOR_ERROR_BW       = TFT_RED;
+const uint16_t COLOR_BORDER_BW      = 0x4208;   // Dark gray border
+
+// Active theme
+const uint16_t COLOR_BG        = USE_BW_THEME ? COLOR_BG_BW : COLOR_BG_DARK;
+const uint16_t COLOR_QUAD_BG   = USE_BW_THEME ? COLOR_QUAD_BG_BW : COLOR_QUAD_BG_DARK;
+const uint16_t COLOR_ACCENT_1  = USE_BW_THEME ? COLOR_ACCENT_1_BW : COLOR_ACCENT_1_DARK;
+const uint16_t COLOR_ACCENT_2  = USE_BW_THEME ? COLOR_ACCENT_2_BW : COLOR_ACCENT_2_DARK;
+const uint16_t COLOR_ACCENT_3  = USE_BW_THEME ? COLOR_ACCENT_3_BW : COLOR_ACCENT_3_DARK;
+const uint16_t COLOR_ACCENT_4  = USE_BW_THEME ? COLOR_ACCENT_4_BW : COLOR_ACCENT_4_DARK;
+const uint16_t COLOR_LABEL     = USE_BW_THEME ? COLOR_LABEL_BW : COLOR_LABEL_DARK;
+const uint16_t COLOR_ERROR     = USE_BW_THEME ? COLOR_ERROR_BW : COLOR_ERROR_DARK;
+const uint16_t COLOR_BORDER    = USE_BW_THEME ? COLOR_BORDER_BW : COLOR_BORDER_DARK;
 
 bool bmeOk = false;
 unsigned long lastRead = 0;
@@ -38,66 +66,138 @@ float prevTemp = -999, prevHum = -999, prevPres = -999, prevAlt = -999;
 void drawStaticUI() {
   tft.fillScreen(COLOR_BG);
 
-  // Title bar
-  tft.fillRect(0, 0, 320, 36, TFT_NAVY);
-  tft.setTextColor(COLOR_TITLE, TFT_NAVY);
-  tft.setTextDatum(MC_DATUM);
-  tft.setTextFont(4);
-  tft.drawString("Atomo View", 160, 18);
+  // 2x2 quadrants with spacing and beveled corners
+  const uint16_t MARGIN = 3;         // Gap between quadrants
+  const uint16_t QUAD_W = 156;       // Slightly smaller quadrants
+  const uint16_t QUAD_H = 116;
 
-  // Divider
-  tft.drawFastHLine(0, 36, 320, TFT_DARKGREY);
+  // Helper function to draw rounded rectangle
+  auto drawRoundedQuad = [&](int x, int y, uint16_t w, uint16_t h, const char* label, int label_y) {
+    const int radius = 6;
+    
+    // Fill center rectangle
+    tft.fillRect(x + radius, y, w - 2*radius, h, COLOR_QUAD_BG);
+    tft.fillRect(x, y + radius, w, h - 2*radius, COLOR_QUAD_BG);
+    
+    // Fill corner circles for rounded corners
+    for (int i = 0; i < radius; i++) {
+      int offset = i * i;  // For smooth curve
+      for (int j = 0; j < radius; j++) {
+        if (i*i + j*j <= radius*radius) {
+          // Top-left
+          tft.drawPixel(x + radius - 1 - i, y + radius - 1 - j, COLOR_QUAD_BG);
+          // Top-right
+          tft.drawPixel(x + w - radius + i, y + radius - 1 - j, COLOR_QUAD_BG);
+          // Bottom-left
+          tft.drawPixel(x + radius - 1 - i, y + h - radius + j, COLOR_QUAD_BG);
+          // Bottom-right
+          tft.drawPixel(x + w - radius + i, y + h - radius + j, COLOR_QUAD_BG);
+        }
+      }
+    }
+    
+    // Draw border with rounded corners
+    // Top edge
+    tft.drawFastHLine(x + radius, y, w - 2*radius, COLOR_BORDER);
+    // Bottom edge
+    tft.drawFastHLine(x + radius, y + h - 1, w - 2*radius, COLOR_BORDER);
+    // Left edge
+    tft.drawFastVLine(x, y + radius, h - 2*radius, COLOR_BORDER);
+    // Right edge
+    tft.drawFastVLine(x + w - 1, y + radius, h - 2*radius, COLOR_BORDER);
+    
+    // Draw corner curves
+    for (int i = 0; i < radius; i++) {
+      for (int j = 0; j < radius; j++) {
+        if (i*i + j*j == radius*radius || (i*i + j*j < radius*radius && (i == radius-1 || j == radius-1))) {
+          // Top-left corner
+          tft.drawPixel(x + radius - 1 - i, y + radius - 1 - j, COLOR_BORDER);
+          // Top-right corner
+          tft.drawPixel(x + w - radius + i, y + radius - 1 - j, COLOR_BORDER);
+          // Bottom-left corner
+          tft.drawPixel(x + radius - 1 - i, y + h - radius + j, COLOR_BORDER);
+          // Bottom-right corner
+          tft.drawPixel(x + w - radius + i, y + h - radius + j, COLOR_BORDER);
+        }
+      }
+    }
+    
+    // Label
+    tft.setTextColor(COLOR_LABEL, COLOR_QUAD_BG);
+    tft.setTextFont(1);
+    tft.setTextDatum(MC_DATUM);
+    tft.drawString(label, x + w/2, label_y);
+  };
 
-  // Row backgrounds (alternating)
-  tft.fillRect(0,  50, 320, 44, 0x1082);
-  tft.fillRect(0, 100, 320, 44, COLOR_BG);
-  tft.fillRect(0, 150, 320, 44, 0x1082);
-  tft.fillRect(0, 200, 320, 44, COLOR_BG);
+  // Top-left (Temperature)
+  drawRoundedQuad(0, 0, QUAD_W, QUAD_H, "TEMP", 12);
 
-  // Labels (left column)
-  tft.setTextFont(2);
-  tft.setTextDatum(ML_DATUM);
+  // Top-right (Humidity)
+  drawRoundedQuad(QUAD_W + MARGIN, 0, QUAD_W, QUAD_H, "HUMIDITY", 12);
 
-  tft.setTextColor(COLOR_LABEL, 0x1082);
-  tft.drawString("TEMPERATURE", 8, 72);
+  // Bottom-left (Pressure)
+  drawRoundedQuad(0, QUAD_H + MARGIN, QUAD_W, QUAD_H, "PRESSURE", QUAD_H + MARGIN + 12);
 
-  tft.setTextColor(COLOR_LABEL, COLOR_BG);
-  tft.drawString("HUMIDITY", 8, 122);
-
-  tft.setTextColor(COLOR_LABEL, 0x1082);
-  tft.drawString("PRESSURE", 8, 172);
-
-  tft.setTextColor(COLOR_LABEL, COLOR_BG);
-  tft.drawString("ALTITUDE", 8, 222);
+  // Bottom-right (Altitude)
+  drawRoundedQuad(QUAD_W + MARGIN, QUAD_H + MARGIN, QUAD_W, QUAD_H, "ALT", QUAD_H + MARGIN + 12);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-void drawValue(float val, float &prev, uint16_t color, uint16_t bgColor,
-               int y, const char* fmt, const char* unit) {
+// Draw value in a specific quadrant with smooth font
+// quad_x, quad_y: top-left corner of quadrant
+// quad_w, quad_h: quadrant dimensions
+void drawQuadValue(float val, float &prev, uint16_t accentColor, 
+                   int quad_x, int quad_y, int quad_w, int quad_h,
+                   const char* fmt, const char* unit) {
   if (val == prev) return;
   prev = val;
 
-  // Erase old value area
-  tft.fillRect(150, y + 4, 162, 32, bgColor);
+  // Calculate center positions for value display
+  int value_y = quad_y + (quad_h / 2);
 
-  char buf[24];
+  // Erase value area
+  tft.fillRect(quad_x + 10, value_y - 18, quad_w - 20, 36, COLOR_QUAD_BG);
+
+  char buf[32];
   snprintf(buf, sizeof(buf), fmt, val);
 
-  // Value (large)
+  // Display value (large font, centered)
   tft.setTextFont(4);
-  tft.setTextColor(color, bgColor);
-  tft.setTextDatum(MR_DATUM);
-  tft.drawString(buf, 264, y + 22);
+  tft.setTextColor(accentColor, COLOR_QUAD_BG);
+  tft.setTextDatum(MC_DATUM);
+  tft.drawString(buf, quad_x + (quad_w / 2), value_y);
 
-  // Unit (small)
-  tft.setFreeFont(NULL);
-  if (strcmp(unit, "F") == 0) {
-    // Draw degree symbol manually for Fahrenheit
-    tft.drawCircle(300, y + 14, 2, color);  // Outline circle for degree symbol
-    tft.drawString("F", 312, y + 18);
-  } else {
-    tft.drawString(unit, 312, y + 18);
+  // Display unit (Font 2 - medium, positioned close to the right of value)
+  tft.setTextFont(2);
+  tft.setTextColor(accentColor, COLOR_QUAD_BG);
+  tft.setTextDatum(ML_DATUM);
+  tft.drawString(unit, quad_x + (quad_w / 2) + 30, value_y - 3);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+void drawDate() {
+  // Get current date from system time
+  time_t now = time(nullptr);
+  
+  // If time is not set (before 2000), set a default
+  if (now < 946684800) {  // Timestamp for 2000-01-01
+    now = 1747939200;      // Default to May 17, 2026
   }
+  
+  struct tm* timeinfo = localtime(&now);
+
+  char dateStr[16];
+  strftime(dateStr, sizeof(dateStr), "%b %d", timeinfo);
+
+  // Draw date at the center gap area between quadrants
+  int centerX = 159;
+  int centerY = 118;
+
+  // Draw date with accent color - no background fill
+  tft.setTextFont(4);
+  tft.setTextColor(COLOR_ACCENT_1);
+  tft.setTextDatum(MC_DATUM);
+  tft.drawString(dateStr, centerX, centerY);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -164,11 +264,23 @@ void loop() {
   Serial.printf("Temp: %.2f °F | Hum: %.2f %% | Pres: %.2f hPa | Alt: %.1f m\n",
                 temp, hum, pres, alt);
 
-  uint16_t bgEven = 0x1082;   // dark row bg
-  uint16_t bgOdd  = COLOR_BG;
+  // Quadrant dimensions with spacing and beveled corners
+  const uint16_t MARGIN = 3;
+  const uint16_t QUAD_W = 156;
+  const uint16_t QUAD_H = 116;
 
-  drawValue(temp, prevTemp, COLOR_TEMP, bgEven, 50,  "%.1f", "F");
-  drawValue(hum,  prevHum,  COLOR_HUM,  bgOdd,  100, "%.1f", "%");
-  drawValue(pres, prevPres, COLOR_PRES, bgEven, 150, "%.1f", "hPa");
-  drawValue(alt,  prevAlt,  COLOR_ALT,  bgOdd,  200, "%.0f", "m");
+  // Top-left: Temperature
+  drawQuadValue(temp, prevTemp, COLOR_ACCENT_1, 0, 0, QUAD_W, QUAD_H, "%.1f", "F");
+
+  // Top-right: Humidity
+  drawQuadValue(hum, prevHum, COLOR_ACCENT_2, QUAD_W + MARGIN, 0, QUAD_W, QUAD_H, "%.1f", "%");
+
+  // Bottom-left: Pressure
+  drawQuadValue(pres, prevPres, COLOR_ACCENT_3, 0, QUAD_H + MARGIN, QUAD_W, QUAD_H, "%.1f", " hPa");
+
+  // Bottom-right: Altitude
+  drawQuadValue(alt, prevAlt, COLOR_ACCENT_4, QUAD_W + MARGIN, QUAD_H + MARGIN, QUAD_W, QUAD_H, "%.0f", "m");
+
+  // Update date in center
+  drawDate();
 }
